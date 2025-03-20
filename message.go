@@ -539,14 +539,21 @@ func NewRedisMessagePtr(typ byte, data any) *RedisMessage {
 
 func NewRedisMessage(typ byte, data any) RedisMessage {
 	r := RedisMessage{typ: typ}
-	v := reflect.TypeOf(data)
-	switch v.Kind() {
-	case reflect.Array|reflect.Slice:
-		r.WithValues(data.([]RedisMessage))
-	case reflect.String:
-		r.WithString(data.(string))
+	switch v := data.(type) {
+	case []RedisMessage:
+		r.WithValues(v)
+	case string:
+		r.WithString(v)
+	case []byte:
+		r.WithString(string(v))
+	case int64:
+		r.integer = v
+	case int, int8, int16, int32:
+		r.integer = int64(reflect.ValueOf(v).Int())
+	case uint, uint8, uint16, uint32, uint64:
+		r.integer = int64(reflect.ValueOf(v).Uint())
 	default:
-		r.integer = data.(int64)
+		// unsupported
 	}
 	return r
 }
@@ -573,7 +580,7 @@ func (m *RedisMessage) GetStringVal() string {
 }
 
 func (m *RedisMessage) GetStringLen() int {
-	if m.values != nil && m.integer > 0 {
+	if m.string != nil && m.integer > 0 {
 		return int(m.integer)
 	}
 	return 0
@@ -586,14 +593,14 @@ func (m *RedisMessage) WithString(s string) *RedisMessage {
 }
 
 func (m *RedisMessage) GetValuesLen() int {
-	if m.GetValuesVal() != nil && m.integer > 0 {
+	if m.values != nil && m.integer > 0 {
 		return int(m.integer)
 	}
 	return 0
 }
 
 func (m *RedisMessage) GetValuesVal() []RedisMessage {
-	if m.GetValuesVal() != nil && m.integer > 0 {
+	if m.values != nil && m.integer > 0 {
 		return unsafe.Slice((*RedisMessage)(unsafe.Pointer(m.values)), m.integer)
 	}
 	return nil
@@ -664,7 +671,9 @@ func (m *RedisMessage) unmarshalView(c int64, buf []byte) (int64, error) {
 				break
 			}
 		}
-		m.values = (*int)(unsafe.Pointer(&v))
+		if m.integer > 0 {
+			m.values = (*int)(unsafe.Pointer(&v[0]))
+		}
 	default:
 		if int64(len(buf)) < c+m.integer {
 			return 0, ErrCacheUnmarshal
@@ -750,7 +759,7 @@ func (m *RedisMessage) Error() error {
 	if m.typ == typeSimpleErr || m.typ == typeBlobErr {
 		// kvrocks: https://github.com/redis/rueidis/issues/152#issuecomment-1333923750
 		mm := *m
-		if m.GetStringLen() >= 4 && strings.HasPrefix(m.GetStringVal(), "ERR ") {
+		if mm.GetStringLen() >= 4 && strings.HasPrefix(mm.GetStringVal(), "ERR ") {
 			mm.string = (*byte)(unsafe.Add(unsafe.Pointer(mm.string), 4))
 			mm.integer -= 4
 		}
@@ -1558,7 +1567,7 @@ func (m *prettyRedisMessage) MarshalJSON() ([]byte, error) {
 	}
 	switch m.typ {
 	case typeFloat, typeBlobString, typeSimpleString, typeVerbatimString, typeBigNumber:
-		obj.Value = m.string
+		obj.Value = RedisMessageGetStringVal(m.string, m.integer)
 	case typeBool:
 		obj.Value = m.integer == 1
 	case typeInteger:

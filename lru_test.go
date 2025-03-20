@@ -24,7 +24,7 @@ func TestLRU(t *testing.T) {
 		if v, entry := store.Flight("0", "GET", TTL, time.Now()); v.typ != 0 || entry != nil {
 			t.Fatalf("got unexpected value from the first Flight: %v %v", v, entry)
 		}
-		m := RedisMessage{typ: '+', string: "0", values: []RedisMessage{{}}}
+		m := NewRedisMessage('+', "0")
 		m.setExpireAt(time.Now().Add(PTTL * time.Millisecond).UnixMilli())
 		store.Update("0", "GET", m)
 		return store.(*lru)
@@ -34,7 +34,7 @@ func TestLRU(t *testing.T) {
 		lru := setup(t)
 		if v, _ := lru.Flight("0", "GET", TTL, time.Now()); v.typ == 0 {
 			t.Fatalf("did not get the value from the second Flight")
-		} else if v.string != "0" {
+		} else if v.GetStringVal() != "0" {
 			t.Fatalf("got unexpected value from the second Flight: %v", v)
 		}
 		time.Sleep(PTTL * time.Millisecond)
@@ -48,11 +48,11 @@ func TestLRU(t *testing.T) {
 		if v, entry := lru.Flight("1", "GET", TTL, time.Now()); v.typ != 0 || entry != nil {
 			t.Fatalf("got unexpected value from the Flight after pttl: %v %v", v, entry)
 		}
-		m := RedisMessage{typ: '+', string: "1"}
+		m := NewRedisMessage('+', "1")
 		lru.Update("1", "GET", m)
 		if v, _ := lru.Flight("1", "GET", TTL, time.Now()); v.typ == 0 {
 			t.Fatalf("did not get the value from the second Flight")
-		} else if v.string != "1" {
+		} else if v.GetStringVal() != "1" {
 			t.Fatalf("got unexpected value from the second Flight: %v", v)
 		}
 	})
@@ -96,7 +96,7 @@ func TestLRU(t *testing.T) {
 		lru := setup(t)
 		for i := 1; i <= Entries; i++ {
 			lru.Flight(strconv.Itoa(i), "GET", TTL, time.Now())
-			m := RedisMessage{typ: '+', string: strconv.Itoa(i)}
+			m := NewRedisMessage('+', strconv.Itoa(i))
 			m.setExpireAt(time.Now().Add(PTTL * time.Millisecond).UnixMilli())
 			lru.Update(strconv.Itoa(i), "GET", m)
 		}
@@ -105,14 +105,14 @@ func TestLRU(t *testing.T) {
 		}
 		if v, _ := lru.Flight(strconv.Itoa(Entries), "GET", TTL, time.Now()); v.typ == 0 {
 			t.Fatalf("did not get the latest value from the Flight")
-		} else if v.string != strconv.Itoa(Entries) {
+		} else if v.GetStringVal() != strconv.Itoa(Entries) {
 			t.Fatalf("got unexpected value from the Flight: %v", v)
 		}
 	})
 
 	t.Run("Cache Delete", func(t *testing.T) {
 		lru := setup(t)
-		lru.Delete([]RedisMessage{{string: "0"}})
+		lru.Delete([]RedisMessage{NewRedisMessage('+', "0")})
 		if v, _ := lru.Flight("0", "GET", TTL, time.Now()); v.typ != 0 {
 			t.Fatalf("got unexpected value from the first Flight: %v", v)
 		}
@@ -122,11 +122,11 @@ func TestLRU(t *testing.T) {
 		lru := setup(t)
 		for i := 1; i < Entries; i++ {
 			lru.Flight(strconv.Itoa(i), "GET", TTL, time.Now())
-			m := RedisMessage{typ: '+', string: strconv.Itoa(i)}
+			m := NewRedisMessage('+', strconv.Itoa(i))
 			lru.Update(strconv.Itoa(i), "GET", m)
 		}
 		for i := 1; i < Entries; i++ {
-			if v, _ := lru.Flight(strconv.Itoa(i), "GET", TTL, time.Now()); v.string != strconv.Itoa(i) {
+			if v, _ := lru.Flight(strconv.Itoa(i), "GET", TTL, time.Now()); v.GetStringVal() != strconv.Itoa(i) {
 				t.Fatalf("got unexpected value before flush all: %v", v)
 			}
 		}
@@ -155,7 +155,7 @@ func TestLRU(t *testing.T) {
 			t.Fatalf("got unexpected value after Close: %v", err)
 		}
 
-		m := RedisMessage{typ: '+', string: "this Update should have no effect"}
+		m := NewRedisMessage('+', "this Update should have no effect")
 		m.setExpireAt(time.Now().Add(PTTL * time.Millisecond).UnixMilli())
 		lru.Update("1", "GET", m)
 		for i := 0; i < 2; i++ { // entry should be always nil after the first call if Close
@@ -245,7 +245,7 @@ func TestLRU(t *testing.T) {
 		lru := setup(t)
 		if v, _ := lru.Flight("0", "GET", TTL, time.Now()); v.typ == 0 {
 			t.Fatalf("did not get the value from the second Flight")
-		} else if v.string != "0" {
+		} else if v.GetStringVal() != "0" {
 			t.Fatalf("got unexpected value from the second Flight: %v", v)
 		}
 		time.Sleep(PTTL * time.Millisecond)
@@ -259,11 +259,11 @@ func TestLRU(t *testing.T) {
 		if v, entry := lru.Flight("1", "GET", TTL, time.Now()); v.typ != 0 || entry != nil {
 			t.Fatalf("got unexpected value from the Flight after pttl: %v %v", v, entry)
 		}
-		m := RedisMessage{typ: '+', string: "1"}
+		m := NewRedisMessage('+', "1")
 		lru.Update("1", "GET", m)
 		if v, _ := flights(lru, time.Now(), TTL, "GET", "1"); v.typ == 0 {
 			t.Fatalf("did not get the value from the second Flight")
-		} else if v.string != "1" {
+		} else if v.GetStringVal() != "1" {
 			t.Fatalf("got unexpected value from the second Flight: %v", v)
 		}
 	})
@@ -307,7 +307,7 @@ func TestLRU(t *testing.T) {
 		lru := setup(t)
 		for i := 1; i <= Entries; i++ {
 			flights(lru, time.Now(), TTL, "GET", strconv.Itoa(i))
-			m := RedisMessage{typ: '+', string: strconv.Itoa(i)}
+			m := NewRedisMessage('+', strconv.Itoa(i))
 			m.setExpireAt(time.Now().Add(PTTL * time.Millisecond).UnixMilli())
 			lru.Update(strconv.Itoa(i), "GET", m)
 		}
@@ -316,14 +316,14 @@ func TestLRU(t *testing.T) {
 		}
 		if v, _ := flights(lru, time.Now(), TTL, "GET", strconv.Itoa(Entries)); v.typ == 0 {
 			t.Fatalf("did not get the latest value from the Flight")
-		} else if v.string != strconv.Itoa(Entries) {
+		} else if v.GetStringVal() != strconv.Itoa(Entries) {
 			t.Fatalf("got unexpected value from the Flight: %v", v)
 		}
 	})
 
 	t.Run("Batch Cache Delete", func(t *testing.T) {
 		lru := setup(t)
-		lru.Delete([]RedisMessage{{string: "0"}})
+		lru.Delete([]RedisMessage{NewRedisMessage('+', "0")})
 		if v, _ := flights(lru, time.Now(), TTL, "GET", "0"); v.typ != 0 {
 			t.Fatalf("got unexpected value from the first Flight: %v", v)
 		}
@@ -333,11 +333,11 @@ func TestLRU(t *testing.T) {
 		lru := setup(t)
 		for i := 1; i < Entries; i++ {
 			flights(lru, time.Now(), TTL, "GET", strconv.Itoa(i))
-			m := RedisMessage{typ: '+', string: strconv.Itoa(i)}
+			m := NewRedisMessage('+', strconv.Itoa(i))
 			lru.Update(strconv.Itoa(i), "GET", m)
 		}
 		for i := 1; i < Entries; i++ {
-			if v, _ := flights(lru, time.Now(), TTL, "GET", strconv.Itoa(i)); v.string != strconv.Itoa(i) {
+			if v, _ := flights(lru, time.Now(), TTL, "GET", strconv.Itoa(i)); v.GetStringVal() != strconv.Itoa(i) {
 				t.Fatalf("got unexpected value before flush all: %v", v)
 			}
 		}
@@ -366,7 +366,7 @@ func TestLRU(t *testing.T) {
 			t.Fatalf("got unexpected value after Close: %v", err)
 		}
 
-		m := RedisMessage{typ: '+', string: "this Update should have no effect"}
+		m := NewRedisMessage('+', "this Update should have no effect")
 		m.setExpireAt(time.Now().Add(PTTL * time.Millisecond).UnixMilli())
 		lru.Update("1", "GET", m)
 		for i := 0; i < 2; i++ { // entry should be always nil after the first call if Close

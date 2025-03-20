@@ -183,7 +183,10 @@ func readS(i *bufio.Reader) (*byte, int64, error) {
 	} else {
 		bs = bs[:trim]
 	}
-	return &bs[0], int64(len(bs)), nil
+	if len(bs) > 0 {
+		return &bs[0], int64(len(bs)), nil
+	}
+	return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, nil
 }
 
 func readI(i *bufio.Reader) (v int64, err error) {
@@ -227,7 +230,10 @@ func readB(i *bufio.Reader) (*byte, int64, error) {
 	if _, err = i.Discard(2); err != nil {
 		return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, err
 	}
-	return &bs[0], int64(len(bs)), nil
+	if len(bs) > 0 {
+		return &bs[0], int64(len(bs)), nil
+	}
+	return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, nil
 }
 
 func readE(i *bufio.Reader) ([]RedisMessage, error) {

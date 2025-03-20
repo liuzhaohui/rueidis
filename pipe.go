@@ -234,7 +234,7 @@ func _newPipe(ctx context.Context, connFn func(context.Context) (net.Conn, error
 						r2 = true
 						continue
 					} else if init[i][0] == "CLIENT" {
-						err = fmt.Errorf("%s: %v\n%w", re.string, init[i], ErrNoCache)
+						err = fmt.Errorf("%s: %v\n%w", RedisMessageGetStringVal(re.string, re.integer), init[i], ErrNoCache)
 					} else if r2 {
 						continue
 					}

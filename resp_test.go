@@ -134,14 +134,14 @@ func TestWriteCmdAndRead(t *testing.T) {
 			t.Fatalf("unexpected err %v", err)
 		} else if m.typ != '*' {
 			t.Fatalf("unexpected m.typ: expected *, got %v", m.typ)
-		} else if len(m.values) != len(cmd) {
-			t.Fatalf("unexpected m.values: expected %v, got %v", len(cmd), len(m.values))
+		} else if m.GetValuesLen() != len(cmd) {
+			t.Fatalf("unexpected m.values: expected %v, got %v", len(cmd),  m.GetValuesLen())
 		} else {
-			for i, v := range m.values {
+			for i, v := range m.GetValuesVal() {
 				if v.typ != '$' {
 					t.Fatalf("unexpected v.values: expected $, got %v", v.typ)
 				}
-				if v.string != cmd[i] {
+				if v.GetStringVal() != cmd[i] {
 					t.Fatalf("unexpected v.string\n expected %v \n got %v", cmd[i], v.string)
 				}
 			}
@@ -199,8 +199,8 @@ func TestReadString(t *testing.T) {
 			if m.typ != '+' {
 				t.Fatalf("unexpected msg type %v", m.typ)
 			}
-			if m.string != "Hello word" {
-				t.Fatalf("unexpected msg string %v", m.string)
+			if m.GetStringVal() != "Hello word" {
+				t.Fatalf("unexpected msg string %v", m.GetStringVal())
 			}
 		}
 	}
@@ -363,7 +363,7 @@ func TestReadChunkedString(t *testing.T) {
 			if m.typ != '$' {
 				t.Fatalf("unexpected msg type %v", m.typ)
 			}
-			if m.string != "Hello word" {
+			if m.GetStringVal() != "Hello word" {
 				t.Fatalf("unexpected msg string %v", m.string)
 			}
 		}
@@ -412,10 +412,10 @@ func TestReadChunkedArray(t *testing.T) {
 			if m.typ != '*' {
 				t.Fatalf("unexpected msg type %v", m.typ)
 			}
-			if len(m.values) != 3 {
-				t.Fatalf("unexpected msg values length %v", len(m.values))
+			if  m.GetValuesLen() != 3 {
+				t.Fatalf("unexpected msg values length %v",  m.GetValuesLen())
 			}
-			for i, v := range m.values {
+			for i, v := range m.GetValuesVal() {
 				if v.typ != ':' || v.integer != int64(i+1) {
 					t.Fatalf("unexpected msg values %v", m.values)
 				}
@@ -440,12 +440,12 @@ func TestReadChunkedMap(t *testing.T) {
 			if m.typ != '%' {
 				t.Fatalf("unexpected msg type %v", m.typ)
 			}
-			if len(m.values) != 4 {
-				t.Fatalf("unexpected msg values length %v", len(m.values))
+			if  m.GetValuesLen() != 4 {
+				t.Fatalf("unexpected msg values length %v",  m.GetValuesLen())
 			}
-			for i, v := range m.values {
+			for i, v := range m.GetValuesVal() {
 				if v.typ != ':' || v.integer != int64(i+1) {
-					t.Fatalf("unexpected msg values %v", m.values)
+					t.Fatalf("unexpected msg values %v", m.GetValuesVal())
 				}
 			}
 		}
@@ -469,21 +469,21 @@ func TestReadAttr(t *testing.T) {
 			if m.typ != '*' {
 				t.Fatalf("unexpected msg type %v", m.typ)
 			}
-			if m.values[0].integer != 2039123 {
-				t.Fatalf("unexpected msg values[0] %v", m.values[0])
+			if m.GetValuesVal()[0].integer != 2039123 {
+				t.Fatalf("unexpected msg values[0] %v", m.GetValuesVal()[0])
 			}
-			if m.values[1].integer != 9543892 {
-				t.Fatalf("unexpected msg values[0] %v", m.values[1])
+			if m.GetValuesVal()[1].integer != 9543892 {
+				t.Fatalf("unexpected msg values[0] %v", m.GetValuesVal()[1])
 			}
-			if !reflect.DeepEqual(*m.attrs, RedisMessage{typ: '|', values: []RedisMessage{
-				{typ: '+', string: "key-popularity"},
-				{typ: '%', values: []RedisMessage{
-					{typ: '$', string: "a"},
-					{typ: ',', string: "0.1923"},
-					{typ: '$', string: "b"},
-					{typ: ',', string: "0.0012"},
-				}},
-			}}) {
+			if !reflect.DeepEqual(*m.attrs, NewRedisMessage('|', []RedisMessage{
+				NewRedisMessage('+', "key-popularity"),
+				NewRedisMessage('%', []RedisMessage{
+					NewRedisMessage('$', "a"),
+					NewRedisMessage(',', "0.1923"),
+					NewRedisMessage('$', "b"),
+					NewRedisMessage(',', "0.0012"),
+				}),
+			})) {
 				t.Fatalf("unexpected msg attr %v", m.attrs)
 			}
 		}
@@ -571,14 +571,14 @@ func TestReadRESP2NullStringInArray(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(m, RedisMessage{
-				typ: '*',
-				values: []RedisMessage{
-					{typ: '$', string: "hello"},
-					{typ: '_'},
-					{typ: '$', string: "world"},
+			if !reflect.DeepEqual(m, NewRedisMessage(
+				'*',
+				[]RedisMessage{
+					NewRedisMessage('$', "hello"),
+					NewRedisMessage('_', 0),
+					NewRedisMessage('$', "world"),
 				},
-			}) {
+			)) {
 				t.Fatalf("unexpected msg %v", m)
 			}
 		}
@@ -612,7 +612,7 @@ func TestWriteSReadS(t *testing.T) {
 	TWriterAndReader(t, writeS, readS, true)
 }
 
-func TWriterAndReader(t *testing.T, writer func(*bufio.Writer, byte, string) error, reader func(*bufio.Reader) (string, error), trim bool) {
+func TWriterAndReader(t *testing.T, writer func(*bufio.Writer, byte, string) error, reader func(*bufio.Reader) (*byte, int64, error), trim bool) {
 	for i := 0; i < iteration; i++ {
 		b := bytes.NewBuffer(nil)
 		o := bufio.NewWriter(b)
@@ -627,9 +627,9 @@ func TWriterAndReader(t *testing.T, writer func(*bufio.Writer, byte, string) err
 		} else if id != str1[0] {
 			t.Fatalf("unexpected id: expected %v, got %v", str1[0], id)
 		}
-		if str2, err := reader(r); err != nil {
+		if str2, int2, err := reader(r); err != nil {
 			t.Fatalf("unexpected err: %v", err)
-		} else if str1 != str2 {
+		} else if str1 != RedisMessageGetStringVal(str2, int2) {
 			t.Fatalf("fail to read the string: \n expected: %v \n got: %v", str1, str2)
 		}
 	}

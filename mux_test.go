@@ -101,13 +101,13 @@ func TestNewMux(t *testing.T) {
 	mock := &redisMock{t: t, buf: bufio.NewReader(n2), conn: n2}
 	go func() {
 		mock.Expect("HELLO", "3").
-			Reply(RedisMessage{
-				typ: '%',
-				values: []RedisMessage{
-					{typ: '+', string: "proto"},
-					{typ: ':', integer: 3},
+			Reply(NewRedisMessage(
+				'%',
+				[]RedisMessage{
+					NewRedisMessage('+', "proto"),
+					NewRedisMessage(':', 3),
 				},
-			})
+			))
 		mock.Expect("CLIENT", "TRACKING", "ON", "OPTIN").
 			ReplyString("OK")
 		mock.Expect("CLIENT", "SETINFO", "LIB-NAME", LibName).
@@ -211,7 +211,7 @@ func TestMuxReuseWire(t *testing.T) {
 		m, checkClean := setupMux([]*mockWire{
 			{
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "PONG"}, nil)
+					return newResult(NewRedisMessage('+', "PONG"), nil)
 				},
 			},
 		})
@@ -234,7 +234,7 @@ func TestMuxReuseWire(t *testing.T) {
 			},
 			{
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "ACQUIRED"}, nil)
+					return newResult(NewRedisMessage('+', "ACQUIRED"), nil)
 				},
 			},
 			{
@@ -271,7 +271,7 @@ func TestMuxReuseWire(t *testing.T) {
 			t.Fatalf("unexpected response %v", val)
 		}
 
-		response <- newResult(RedisMessage{typ: '+', string: "BLOCK_RESPONSE"}, nil)
+		response <- newResult(NewRedisMessage('+', "BLOCK_RESPONSE"), nil)
 		<-blocking
 	})
 
@@ -282,12 +282,12 @@ func TestMuxReuseWire(t *testing.T) {
 			{
 				// leave first wire for pipeline calls
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "PIPELINED"}, nil)
+					return newResult(NewRedisMessage('+', "PIPELINED"), nil)
 				},
 			},
 			{
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "ACQUIRED"}, nil)
+					return newResult(NewRedisMessage('+', "ACQUIRED"), nil)
 				},
 			},
 			{
@@ -332,7 +332,7 @@ func TestMuxReuseWire(t *testing.T) {
 			t.Fatalf("unexpected response %v", val)
 		}
 
-		response <- newResult(RedisMessage{typ: '+', string: "BLOCK_RESPONSE"}, nil)
+		response <- newResult(NewRedisMessage('+', "BLOCK_RESPONSE"), nil)
 		<-blocking
 	})
 
@@ -343,12 +343,12 @@ func TestMuxReuseWire(t *testing.T) {
 			{
 				// leave first wire for pipeline calls
 				DoMultiFn: func(cmd ...Completed) *redisresults {
-					return &redisresults{s: []RedisResult{newResult(RedisMessage{typ: '+', string: "PIPELINED"}, nil)}}
+					return &redisresults{s: []RedisResult{newResult(NewRedisMessage('+', "PIPELINED"), nil)}}
 				},
 			},
 			{
 				DoMultiFn: func(cmd ...Completed) *redisresults {
-					return &redisresults{s: []RedisResult{newResult(RedisMessage{typ: '+', string: "ACQUIRED"}, nil)}}
+					return &redisresults{s: []RedisResult{newResult(NewRedisMessage('+', "ACQUIRED"), nil)}}
 				},
 			},
 			{
@@ -393,7 +393,7 @@ func TestMuxReuseWire(t *testing.T) {
 			t.Fatalf("unexpected response %v", val)
 		}
 
-		response <- newResult(RedisMessage{typ: '+', string: "BLOCK_RESPONSE"}, nil)
+		response <- newResult(NewRedisMessage('+', "BLOCK_RESPONSE"), nil)
 		<-blocking
 	})
 
@@ -406,7 +406,7 @@ func TestMuxReuseWire(t *testing.T) {
 			},
 			{
 				DoMultiFn: func(cmd ...Completed) *redisresults {
-					return &redisresults{s: []RedisResult{newResult(RedisMessage{typ: '+', string: "ACQUIRED"}, nil)}}
+					return &redisresults{s: []RedisResult{newResult(NewRedisMessage('+', "ACQUIRED"), nil)}}
 				},
 			},
 			{
@@ -443,7 +443,7 @@ func TestMuxReuseWire(t *testing.T) {
 			t.Fatalf("unexpected response %v", val)
 		}
 
-		response <- newResult(RedisMessage{typ: '+', string: "BLOCK_RESPONSE"}, nil)
+		response <- newResult(NewRedisMessage('+', "BLOCK_RESPONSE"), nil)
 		<-blocking
 	})
 
@@ -482,13 +482,13 @@ func TestMuxDelegation(t *testing.T) {
 		m, checkClean := setupMux([]*mockWire{
 			{
 				InfoFn: func() map[string]RedisMessage {
-					return map[string]RedisMessage{"key": {typ: '+', string: "value"}}
+					return map[string]RedisMessage{"key": NewRedisMessage('+', "value")}
 				},
 			},
 		})
 		defer checkClean(t)
 		defer m.Close()
-		if info := m.Info(); info == nil || info["key"].string != "value" {
+		if info := m.Info(); info == nil || RedisMessageGetStringVal(info["key"].string, info["key"].integer) != "value" {
 			t.Fatalf("unexpected info %v", info)
 		}
 	})
@@ -554,7 +554,7 @@ func TestMuxDelegation(t *testing.T) {
 					if cmd.Commands()[0] != "READONLY_COMMAND" {
 						t.Fatalf("command should be READONLY_COMMAND")
 					}
-					return newResult(RedisMessage{typ: '+', string: "READONLY_COMMAND_RESPONSE"}, nil)
+					return newResult(NewRedisMessage('+', "READONLY_COMMAND_RESPONSE"), nil)
 				},
 			},
 		})
@@ -597,7 +597,7 @@ func TestMuxDelegation(t *testing.T) {
 			},
 			{
 				DoMultiFn: func(multi ...Completed) *redisresults {
-					return &redisresults{s: []RedisResult{newResult(RedisMessage{typ: '+', string: "MULTI_COMMANDS_RESPONSE"}, nil)}}
+					return &redisresults{s: []RedisResult{newResult(NewRedisMessage('+', "MULTI_COMMANDS_RESPONSE"), nil)}}
 				},
 			},
 		})
@@ -640,7 +640,7 @@ func TestMuxDelegation(t *testing.T) {
 			},
 			{
 				DoCacheFn: func(cmd Cacheable, ttl time.Duration) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "READONLY_COMMAND_RESPONSE"}, nil)
+					return newResult(NewRedisMessage('+', "READONLY_COMMAND_RESPONSE"), nil)
 				},
 			},
 		})
@@ -668,7 +668,7 @@ func TestMuxDelegation(t *testing.T) {
 			},
 			{
 				DoMultiCacheFn: func(multi ...CacheableTTL) *redisresults {
-					return &redisresults{s: []RedisResult{newResult(RedisMessage{typ: '+', string: "MULTI_COMMANDS_RESPONSE"}, nil)}}
+					return &redisresults{s: []RedisResult{newResult(NewRedisMessage('+', "MULTI_COMMANDS_RESPONSE"), nil)}}
 				},
 			},
 		})
@@ -696,7 +696,7 @@ func TestMuxDelegation(t *testing.T) {
 						if s := cmd.Cmd.Slot() & uint16(len(wires)-1); s != idx {
 							result[j] = newErrResult(fmt.Errorf("wrong slot %v %v", s, idx))
 						} else {
-							result[j] = newResult(RedisMessage{typ: '+', string: cmd.Cmd.Commands()[1]}, nil)
+							result[j] = newResult(NewRedisMessage('+', cmd.Cmd.Commands()[1]), nil)
 						}
 					}
 					return &redisresults{s: result}
@@ -836,7 +836,7 @@ func TestMuxDelegation(t *testing.T) {
 			<-blocked
 		}
 		for i := 0; i < 2; i++ {
-			responses <- newResult(RedisMessage{typ: '+', string: "BLOCK_COMMANDS_RESPONSE"}, nil)
+			responses <- newResult(NewRedisMessage('+', "BLOCK_COMMANDS_RESPONSE"), nil)
 		}
 		wg.Wait()
 	})
@@ -860,7 +860,7 @@ func TestMuxDelegation(t *testing.T) {
 			},
 			{
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "OK"}, nil)
+					return newResult(NewRedisMessage('+', "OK"), nil)
 				},
 			},
 		})
@@ -928,7 +928,7 @@ func TestMuxDelegation(t *testing.T) {
 			<-blocked
 		}
 		for i := 0; i < 2; i++ {
-			responses <- newResult(RedisMessage{typ: '+', string: "BLOCK_COMMANDS_RESPONSE"}, nil)
+			responses <- newResult(NewRedisMessage('+', "BLOCK_COMMANDS_RESPONSE"), nil)
 		}
 		wg.Wait()
 	})
@@ -981,7 +981,7 @@ func TestMuxDelegation(t *testing.T) {
 			<-blocked
 		}
 		for i := 0; i < 2; i++ {
-			responses <- newResult(RedisMessage{typ: '+', string: "BLOCK_COMMANDS_RESPONSE"}, nil)
+			responses <- newResult(NewRedisMessage('+', "BLOCK_COMMANDS_RESPONSE"), nil)
 		}
 		wg.Wait()
 	})
@@ -1005,7 +1005,7 @@ func TestMuxDelegation(t *testing.T) {
 			},
 			{
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "OK"}, nil)
+					return newResult(NewRedisMessage('+', "OK"), nil)
 				},
 			},
 		})
@@ -1038,7 +1038,7 @@ func TestMuxRegisterCloseHook(t *testing.T) {
 		m, checkClean := setupMux([]*mockWire{
 			{
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "PONG1"}, nil)
+					return newResult(NewRedisMessage('+', "PONG1"), nil)
 				},
 				SetOnCloseHookFn: func(fn func(error)) {
 					hook.Store(fn)
@@ -1046,7 +1046,7 @@ func TestMuxRegisterCloseHook(t *testing.T) {
 			},
 			{
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "PONG2"}, nil)
+					return newResult(NewRedisMessage('+', "PONG2"), nil)
 				},
 			},
 		})
@@ -1065,7 +1065,7 @@ func TestMuxRegisterCloseHook(t *testing.T) {
 		m, checkClean := setupMux([]*mockWire{
 			{
 				DoFn: func(cmd Completed) RedisResult {
-					return newResult(RedisMessage{typ: '+', string: "PONG1"}, nil)
+					return newResult(NewRedisMessage('+', "PONG1"), nil)
 				},
 				SetOnCloseHookFn: func(fn func(error)) {
 					hook.Store(fn)
