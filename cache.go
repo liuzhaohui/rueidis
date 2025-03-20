@@ -137,7 +137,7 @@ func (a *adapter) Delete(keys []RedisMessage) {
 		}
 	} else {
 		for _, k := range keys {
-			a.del(k.string)
+			a.del(k.GetStringVal())
 		}
 	}
 	a.mu.Unlock()

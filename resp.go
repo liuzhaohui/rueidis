@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unsafe"
 )
 
 var errChunked = errors.New("unbounded redis message")
@@ -77,12 +78,12 @@ func init() {
 }
 
 func readSimpleString(i *bufio.Reader) (m RedisMessage, err error) {
-	m.string, err = readS(i)
+	m.string, m.integer, err = readS(i)
 	return
 }
 
 func readBlobString(i *bufio.Reader) (m RedisMessage, err error) {
-	m.string, err = readB(i)
+	m.string, m.integer, err = readB(i)
 	if err == errChunked {
 		sb := strings.Builder{}
 		for {
@@ -94,7 +95,7 @@ func readBlobString(i *bufio.Reader) (m RedisMessage, err error) {
 				return RedisMessage{}, err
 			}
 			if length == 0 {
-				return RedisMessage{string: sb.String()}, nil
+				return *m.WithString(sb.String()), nil
 			}
 			sb.Grow(int(length))
 			if _, err = io.CopyN(&sb, i, length); err != nil {
@@ -132,23 +133,33 @@ func readNull(i *bufio.Reader) (m RedisMessage, err error) {
 
 func readArray(i *bufio.Reader) (m RedisMessage, err error) {
 	length, err := readI(i)
+	var v []RedisMessage
 	if err == nil {
 		if length == -1 {
 			return m, errOldNull
 		}
-		m.values, err = readA(i, length)
+		if v, err = readA(i, length); v != nil {
+			m.WithValues(v)
+		}
 	} else if err == errChunked {
-		m.values, err = readE(i)
+		if v, err = readE(i); v != nil {
+			m.WithValues(v)
+		}
 	}
 	return m, err
 }
 
 func readMap(i *bufio.Reader) (m RedisMessage, err error) {
 	length, err := readI(i)
+	var v []RedisMessage
 	if err == nil {
-		m.values, err = readA(i, length*2)
+		if v, err = readA(i, length*2); v != nil {
+			m.WithValues(v)
+		}
 	} else if err == errChunked {
-		m.values, err = readE(i)
+		if v, err = readE(i); v != nil {
+			m.WithValues(v)
+		}
 	}
 	return m, err
 }
@@ -156,23 +167,23 @@ func readMap(i *bufio.Reader) (m RedisMessage, err error) {
 const ok = "OK"
 const okrn = "OK\r\n"
 
-func readS(i *bufio.Reader) (string, error) {
+func readS(i *bufio.Reader) (*byte, int64, error) {
 	if peek, _ := i.Peek(2); string(peek) == ok {
 		if peek, _ = i.Peek(4); string(peek) == okrn {
 			_, _ = i.Discard(4)
-			return ok, nil
+			return (*byte)(unsafe.Pointer(unsafe.StringData(ok))), 2, nil
 		}
 	}
 	bs, err := i.ReadBytes('\n')
 	if err != nil {
-		return "", err
+		return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, err
 	}
 	if trim := len(bs) - 2; trim < 0 {
-		return "", errors.New(unexpectedNoCRLF)
+		return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, errors.New(unexpectedNoCRLF)
 	} else {
 		bs = bs[:trim]
 	}
-	return BinaryString(bs), nil
+	return &bs[0], int64(len(bs)), nil
 }
 
 func readI(i *bufio.Reader) (v int64, err error) {
@@ -201,22 +212,22 @@ func readI(i *bufio.Reader) (v int64, err error) {
 	return v * s, nil
 }
 
-func readB(i *bufio.Reader) (string, error) {
+func readB(i *bufio.Reader) (*byte, int64, error) {
 	length, err := readI(i)
 	if err != nil {
-		return "", err
+		return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, err
 	}
 	if length == -1 {
-		return "", errOldNull
+		return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, errOldNull
 	}
 	bs := make([]byte, length)
 	if _, err = io.ReadFull(i, bs); err != nil {
-		return "", err
+		return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, err
 	}
 	if _, err = i.Discard(2); err != nil {
-		return "", err
+		return (*byte)(unsafe.Pointer(unsafe.StringData(""))), 0, err
 	}
-	return BinaryString(bs), nil
+	return &bs[0], int64(len(bs)), nil
 }
 
 func readE(i *bufio.Reader) ([]RedisMessage, error) {
@@ -348,7 +359,7 @@ next:
 		}
 		switch m.typ {
 		case typeSimpleString, typeFloat, typeBigNumber:
-			n, err := w.Write([]byte(m.string))
+			n, err := w.Write([]byte(m.GetStringVal()))
 			return int64(n), err, true
 		case typeNull:
 			return 0, Nil, true

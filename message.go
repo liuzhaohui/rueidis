@@ -551,6 +551,20 @@ func NewRedisMessage(typ byte, data any) RedisMessage {
 	return r
 }
 
+func RedisMessageGetValuesVal(values *int, integer int64) []RedisMessage {
+	if values != nil && integer > 0 {
+		return unsafe.Slice((*RedisMessage)(unsafe.Pointer(values)), integer)
+	}
+	return nil
+}
+
+func RedisMessageGetStringVal(s *byte, integer int64) string {
+	if s != nil && integer > 0 {
+		return unsafe.String(s, integer)
+	}
+	return ""
+}
+
 func (m *RedisMessage) GetStringVal() string {
 	if m.string != nil && m.integer > 0 {
 		return unsafe.String(m.string, m.integer)
