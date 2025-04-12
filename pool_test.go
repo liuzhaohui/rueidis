@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -335,7 +336,7 @@ func TestPoolWithAcquireCtx(t *testing.T) {
 	defer ShouldNotLeaked(SetupLeakDetection())
 	setup := func(size int, delay time.Duration) *pool {
 		return newPool(size, dead, 0, 0, func(ctx context.Context) wire {
-			var err error 
+			var err error
 			closed := false
 			timer := time.NewTimer(delay)
 			defer timer.Stop()
@@ -346,7 +347,7 @@ func TestPoolWithAcquireCtx(t *testing.T) {
 			case <-timer.C:
 				// noop
 			}
-			
+
 			return &mockWire{
 				CloseFn: func() {
 					closed = true
@@ -401,7 +402,7 @@ func TestPoolWithAcquireCtx(t *testing.T) {
 		// size = 5
 		for i := range conns {
 			d := time.Millisecond
-			if i % 2 == 0 {
+			if i%2 == 0 {
 				d = time.Millisecond * 8
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), d)
@@ -426,7 +427,7 @@ func TestPoolWithAcquireCtx(t *testing.T) {
 
 		// size = 10
 		for i := range conns {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond * 8)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*8)
 			w := p.Acquire(ctx)
 			conns[i] = w
 			cancel()
@@ -445,7 +446,94 @@ func TestPoolWithAcquireCtx(t *testing.T) {
 			t.Fatalf("pool len must equal to %d, actual: %d", len(conns), len(p.list))
 		}
 		p.cond.L.Unlock()
-		
+
 		p.Close()
+	})
+}
+
+func TestPoolWithCtxTimeout(t *testing.T) {
+	defer ShouldNotLeaked(SetupLeakDetection())
+	setup := func(size int, delay time.Duration) *pool {
+		var count int64
+
+		return newPool(size, dead, 0, 0, func(ctx context.Context) wire {
+			if atomic.AddInt64(&count, 1) > int64(size) {
+				timer := time.NewTimer(delay)
+				defer timer.Stop()
+				<-timer.C
+			}
+			return &mockWire{}
+		})
+	}
+
+	t.Run("some connections exceed context deadline, acquire duration should be around ctx timeout duration", func(t *testing.T) {
+		p := setup(5, time.Millisecond*20)
+
+		var wg sync.WaitGroup
+		// acquire 5 connections with a higher deadline
+		for i := 0; i < 5; i++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+			w := p.Acquire(ctx)
+			cancel()
+			if err := w.Error(); err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+		}
+
+		ctxTimeout := 1 * time.Millisecond
+		// acquire 5 more connections with a shorter deadline
+		for i := 0; i < 5; i++ {
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				start := time.Now()
+				ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
+				defer cancel()
+				w := p.Acquire(ctx)
+				if err := w.Error(); !errors.Is(err, context.DeadlineExceeded) {
+					t.Errorf("unexpected err: %v", err)
+				}
+				if dur := time.Since(start).Milliseconds(); dur < ctxTimeout.Milliseconds() {
+					t.Errorf("Acquire time for request %d is not within the expected range: %d seconds, got: %d", i, ctxTimeout.Milliseconds(), dur)
+				}
+			}(i)
+		}
+		wg.Wait()
+	})
+
+	t.Run("context cancelled after some timeout, pool should not wait for the connection", func(t *testing.T) {
+		p := setup(5, time.Millisecond*20)
+
+		var wg sync.WaitGroup
+		// acquire 5 connections with a higher deadline
+		for i := 0; i < 5; i++ {
+			ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+			w := p.Acquire(ctx)
+			cancel()
+			if err := w.Error(); err != nil {
+				t.Fatalf("unexpected err: %v", err)
+			}
+		}
+
+		cancelTimeout := 4 * time.Millisecond
+		// acquire 5 more connections with premature cancellation
+		for i := 0; i < 5; i++ {
+			wg.Add(1)
+			go func(index int) {
+				defer wg.Done()
+				start := time.Now()
+				ctx, cancel := context.WithCancel(context.Background())
+				time.AfterFunc(cancelTimeout, cancel)
+				w := p.Acquire(ctx)
+				if err := w.Error(); !errors.Is(err, context.Canceled) {
+					t.Errorf("unexpected err: %v", err)
+				}
+				if dur := time.Since(start).Milliseconds(); dur < cancelTimeout.Milliseconds() {
+					t.Errorf("Acquire time for request %d is not within the expected range: %d seconds, got: %d", i, cancelTimeout.Milliseconds(), dur)
+				}
+			}(i)
+		}
+
+		wg.Wait()
 	})
 }

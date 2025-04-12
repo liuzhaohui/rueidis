@@ -216,6 +216,9 @@ func (n *node) GoStructs() (out []goStruct) {
 		if len(n.Arg.Command) != 0 {
 			s.BuildDef.Command = strings.Split(n.Arg.Command, " ")
 		}
+		if len(n.Arg.Token) != 0 {
+			s.BuildDef.Command = strings.Split(n.Arg.Token, " ")
+		}
 
 		switch nm := n.Arg.Name.(type) {
 		case string:
@@ -678,7 +681,7 @@ func toGoType(paramType string) string {
 		return "string"
 	case "double":
 		return "float64"
-	case "integer", "posix time":
+	case "integer", "posix time", "unix-time":
 		return "int64"
 	case "unsigned integer":
 		return "uint64"
